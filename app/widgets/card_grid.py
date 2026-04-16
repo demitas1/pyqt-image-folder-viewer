@@ -189,10 +189,37 @@ class CardGrid(QWidget):
         self._view.setDefaultDropAction(Qt.DropAction.MoveAction)
         self._view.setGridSize(QSize(_card_width(aspect_ratio) + 8, CARD_HEIGHT + 8))
         self._view.doubleClicked.connect(self._on_double_click)
+        self._view.activated.connect(self._on_double_click)
         self._view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._view.customContextMenuRequested.connect(self._on_context_menu)
 
         layout.addWidget(self._view)
+
+    def current_card(self) -> Card | None:
+        """現在選択中のカードを返す。未選択の場合は None。"""
+        index = self._view.currentIndex()
+        if not index.isValid():
+            return None
+        return index.data(Qt.ItemDataRole.UserRole)
+
+    def delete_selected(self) -> None:
+        """選択中のカードを削除する（確認ダイアログあり）。"""
+        card = self.current_card()
+        if card:
+            self._on_delete(card)
+
+    def select_card_by_id(self, card_id: str) -> None:
+        """指定 ID のカードを選択状態にしてスクロールする。"""
+        for row, card in enumerate(self._profile.cards):
+            if card.id == card_id:
+                index = self._model.index(row, 0)
+                self._view.setCurrentIndex(index)
+                self._view.scrollTo(index)
+                return
+
+    def set_focus(self) -> None:
+        """内部の QListView にフォーカスを移す。"""
+        self._view.setFocus()
 
     def set_aspect_ratio(self, ratio: str) -> None:
         """アスペクト比を変更してグリッドを再描画する。キャッシュ無効化は不要。"""

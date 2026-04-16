@@ -7,7 +7,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -103,6 +104,18 @@ class MainWindow(QMainWindow):
 
         # ステータスバー
         self.setStatusBar(QStatusBar())
+
+        self._setup_shortcuts()
+
+    def _setup_shortcuts(self) -> None:
+        QShortcut(QKeySequence(Qt.Key.Key_Delete), self).activated.connect(
+            self._on_delete_selected
+        )
+        QShortcut(QKeySequence("Ctrl+N"), self).activated.connect(self._on_add_card)
+        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self._save_profile)
+        QShortcut(QKeySequence(Qt.Key.Key_Q), self).activated.connect(
+            QApplication.instance().quit
+        )
 
     # ------------------------------------------------------------------
     # ウィンドウ状態
@@ -208,14 +221,33 @@ class MainWindow(QMainWindow):
         self._viewer.show()
         self.hide()
 
+    def _on_delete_selected(self) -> None:
+        self._card_grid.delete_selected()
+
     def _on_viewer_closed(self) -> None:
         # last_page は ViewerWindow 側で設定済み（戻る→index、直接閉じる→viewer のまま）
         self._save_profile()
         self.show()
+        # ViewerWindow の close 処理完了後にフォーカスを確実に設定する
+        QTimer.singleShot(0, self._restore_card_focus)
+
+    def _restore_card_focus(self) -> None:
+        """直前に開いていたカードを選択してフォーカスを移す。
+        last_card_id が未設定の場合は先頭カードを選択する。"""
+        last_id = self._profile.app_state.last_card_id
+        if last_id:
+            self._card_grid.select_card_by_id(last_id)
+        elif self._profile.cards:
+            self._card_grid.select_card_by_id(self._profile.cards[0].id)
+        self._card_grid.set_focus()
 
     # ------------------------------------------------------------------
     # ウィンドウイベント
     # ------------------------------------------------------------------
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        QTimer.singleShot(0, self._restore_card_focus)
 
     def closeEvent(self, event) -> None:
         self._save_window_state()
