@@ -80,10 +80,6 @@ class MainWindow(QMainWindow):
         btn_add.clicked.connect(self._on_add_card)
         toolbar.addWidget(btn_add)
 
-        btn_save = QPushButton("保存")
-        btn_save.clicked.connect(self._save_profile)
-        toolbar.addWidget(btn_save)
-
         btn_save_as = QPushButton("別名保存")
         btn_save_as.clicked.connect(self._on_save_as)
         toolbar.addWidget(btn_save_as)
@@ -120,7 +116,6 @@ class MainWindow(QMainWindow):
             self._on_delete_selected
         )
         QShortcut(QKeySequence("Ctrl+N"), self).activated.connect(self._on_add_card)
-        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self._save_profile)
         QShortcut(QKeySequence(Qt.Key.Key_Q), self).activated.connect(
             QApplication.instance().quit
         )
