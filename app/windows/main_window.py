@@ -84,6 +84,10 @@ class MainWindow(QMainWindow):
         btn_save.clicked.connect(self._save_profile)
         toolbar.addWidget(btn_save)
 
+        btn_save_as = QPushButton("別名保存")
+        btn_save_as.clicked.connect(self._on_save_as)
+        toolbar.addWidget(btn_save_as)
+
         # スペーサー（設定ボタンを右端に寄せる）
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
@@ -235,6 +239,30 @@ class MainWindow(QMainWindow):
         self._card_grid.set_profile(new_profile)
         self._refresh_profile_combo()
         QTimer.singleShot(0, self._restore_card_focus)
+
+    def _on_save_as(self) -> None:
+        """現在のプロファイルを別名で保存し、新しいパスに切り替える。"""
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "別名で保存",
+            self._profile_path,
+            "IVプロファイル (*.ivprofile)",
+        )
+        if not path:
+            return
+        try:
+            save_profile(path, self._profile)
+        except Exception as e:
+            self._toast.add_toast(f"保存に失敗しました: {e}", ToastType.ERROR)
+            return
+
+        self._profile_path = path
+        add_recent_profile(self._config, path, Path(path).stem)
+        save_app_config(self._config)
+
+        self.setWindowTitle(self._window_title())
+        self._refresh_profile_combo()
+        self._toast.add_toast("別名で保存しました", ToastType.SUCCESS)
 
     def _save_profile(self) -> None:
         try:
