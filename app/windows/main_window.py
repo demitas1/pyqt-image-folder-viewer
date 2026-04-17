@@ -26,6 +26,7 @@ from app.models.app_config import AppConfig, add_recent_profile, save_app_config
 from app.models.profile import (
     Card,
     ProfileData,
+    create_empty_profile,
     load_profile,
     save_profile,
 )
@@ -161,21 +162,42 @@ class MainWindow(QMainWindow):
         self._profile_combo.clear()
         for r in self._config.recent_profiles:
             self._profile_combo.addItem(r.name, r.path)
-        self._profile_combo.addItem("プロファイルを開く...", None)
-        # 現在のプロファイルを選択状態にする
-        for i in range(self._profile_combo.count() - 1):
+        self._profile_combo.addItem("プロファイルを開く...", "open")
+        self._profile_combo.addItem("新規作成...", "new")
+        # 現在のプロファイルを選択状態にする（末尾2項目はアクションなので除外）
+        for i in range(self._profile_combo.count() - 2):
             if self._profile_combo.itemData(i) == self._profile_path:
                 self._profile_combo.setCurrentIndex(i)
                 break
         self._profile_combo.blockSignals(False)
 
     def _on_profile_selected(self, index: int) -> None:
-        path = self._profile_combo.itemData(index)
-        if path is None:
-            # 「プロファイルを開く...」
+        data = self._profile_combo.itemData(index)
+        if data == "open":
             self._on_open_profile()
             return
-        if path == self._profile_path:
+        if data == "new":
+            self._on_new_profile()
+            return
+        if data == self._profile_path:
+            return
+        self._switch_profile(data)
+
+    def _on_new_profile(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "新規プロファイルの保存先",
+            "profile.ivprofile",
+            "IVプロファイル (*.ivprofile)",
+        )
+        if not path:
+            self._refresh_profile_combo()
+            return
+        try:
+            create_empty_profile(path)
+        except Exception as e:
+            self._toast.add_toast(f"プロファイルを作成できません: {e}", ToastType.ERROR)
+            self._refresh_profile_combo()
             return
         self._switch_profile(path)
 
