@@ -72,6 +72,10 @@ QPushButton:disabled {
     background-color: #374151;
     color: #6b7280;
 }
+QFileDialog QSizeGrip {
+    background-color: transparent;
+    image: none;
+}
 QListView {
     background-color: #111827;
     border: none;
@@ -178,6 +182,10 @@ QPushButton:checked {
 QPushButton:disabled {
     background-color: #e5e7eb;
     color: #9ca3af;
+}
+QFileDialog QSizeGrip {
+    background-color: transparent;
+    image: none;
 }
 QListView {
     background-color: #e5e7eb;

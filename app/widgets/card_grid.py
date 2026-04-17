@@ -221,6 +221,13 @@ class CardGrid(QWidget):
         """内部の QListView にフォーカスを移す。"""
         self._view.setFocus()
 
+    def set_profile(self, profile: ProfileData) -> None:
+        """プロファイルを切り替えてグリッドを更新する。"""
+        self._profile = profile
+        self._model._profile = profile
+        self._delegate._pixmaps.clear()
+        self._model.refresh()
+
     def set_aspect_ratio(self, ratio: str) -> None:
         """アスペクト比を変更してグリッドを再描画する。キャッシュ無効化は不要。"""
         self._aspect_ratio = ratio

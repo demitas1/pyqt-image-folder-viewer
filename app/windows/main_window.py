@@ -10,15 +10,13 @@ from pathlib import Path
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
+    QComboBox,
     QFileDialog,
-    QHBoxLayout,
-    QLabel,
     QMainWindow,
     QPushButton,
     QSizePolicy,
     QStatusBar,
     QToolBar,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -28,6 +26,7 @@ from app.models.app_config import AppConfig, add_recent_profile, save_app_config
 from app.models.profile import (
     Card,
     ProfileData,
+    load_profile,
     save_profile,
 )
 from app.utils import theme as theme_mod
@@ -68,8 +67,12 @@ class MainWindow(QMainWindow):
         toolbar = QToolBar()
         self.addToolBar(toolbar)
 
-        lbl = QLabel(f"  {Path(self._profile_path).name}  ")
-        toolbar.addWidget(lbl)
+        # プロファイル選択コンボボックス
+        self._profile_combo = QComboBox()
+        self._profile_combo.setMinimumWidth(180)
+        self._refresh_profile_combo()
+        self._profile_combo.currentIndexChanged.connect(self._on_profile_selected)
+        toolbar.addWidget(self._profile_combo)
         toolbar.addSeparator()
 
         btn_add = QPushButton("＋ カード追加")
@@ -151,6 +154,65 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     # プロファイル操作
     # ------------------------------------------------------------------
+
+    def _refresh_profile_combo(self) -> None:
+        """コンボボックスのプロファイル一覧を再構築する。"""
+        self._profile_combo.blockSignals(True)
+        self._profile_combo.clear()
+        for r in self._config.recent_profiles:
+            self._profile_combo.addItem(r.name, r.path)
+        self._profile_combo.addItem("プロファイルを開く...", None)
+        # 現在のプロファイルを選択状態にする
+        for i in range(self._profile_combo.count() - 1):
+            if self._profile_combo.itemData(i) == self._profile_path:
+                self._profile_combo.setCurrentIndex(i)
+                break
+        self._profile_combo.blockSignals(False)
+
+    def _on_profile_selected(self, index: int) -> None:
+        path = self._profile_combo.itemData(index)
+        if path is None:
+            # 「プロファイルを開く...」
+            self._on_open_profile()
+            return
+        if path == self._profile_path:
+            return
+        self._switch_profile(path)
+
+    def _on_open_profile(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "プロファイルを開く",
+            "",
+            "IVプロファイル (*.ivprofile)",
+        )
+        if not path:
+            # キャンセル時はコンボを現在のプロファイルに戻す
+            self._refresh_profile_combo()
+            return
+        self._switch_profile(path)
+
+    def _switch_profile(self, path: str) -> None:
+        """現在のプロファイルを保存して新しいプロファイルに切り替える。"""
+        try:
+            new_profile = load_profile(path)
+        except Exception as e:
+            self._toast.add_toast(f"プロファイルを開けません: {e}", ToastType.ERROR)
+            self._refresh_profile_combo()
+            return
+
+        self._save_profile()
+
+        self._profile = new_profile
+        self._profile_path = path
+
+        add_recent_profile(self._config, path, Path(path).stem)
+        save_app_config(self._config)
+
+        self.setWindowTitle(self._window_title())
+        self._card_grid.set_profile(new_profile)
+        self._refresh_profile_combo()
+        QTimer.singleShot(0, self._restore_card_focus)
 
     def _save_profile(self) -> None:
         try:
