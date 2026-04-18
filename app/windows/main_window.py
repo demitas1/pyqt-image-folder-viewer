@@ -76,6 +76,12 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self._profile_combo)
         toolbar.addSeparator()
 
+        btn_back = QPushButton("← 戻る")
+        btn_back.setToolTip("プロファイル選択画面に戻る")
+        btn_back.clicked.connect(self._on_back_to_startup)
+        toolbar.addWidget(btn_back)
+        toolbar.addSeparator()
+
         btn_add = QPushButton("＋ カード追加")
         btn_add.clicked.connect(self._on_add_card)
         toolbar.addWidget(btn_add)
@@ -234,6 +240,16 @@ class MainWindow(QMainWindow):
         self._card_grid.set_profile(new_profile)
         self._refresh_profile_combo()
         QTimer.singleShot(0, self._restore_card_focus)
+
+    def _on_back_to_startup(self) -> None:
+        """現在のプロファイルを保存して StartupWindow に戻る。"""
+        self._save_window_state()
+        self._save_profile()
+        from app.windows.startup_window import StartupWindow
+
+        self._startup = StartupWindow(auto_open=False)
+        self._startup.show()
+        self.hide()
 
     def _on_save_as(self) -> None:
         """現在のプロファイルを別名で保存し、新しいパスに切り替える。"""

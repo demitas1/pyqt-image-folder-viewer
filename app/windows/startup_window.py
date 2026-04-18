@@ -11,13 +11,13 @@ from PyQt6.QtWidgets import (
     QDialog,
     QFileDialog,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
-    QWidget,
 )
 
 from app.models.app_config import (
@@ -33,10 +33,10 @@ from app.models.profile import ProfileData, create_empty_profile, load_profile
 class StartupWindow(QDialog):
     """起動時のプロファイル選択ダイアログ。"""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, auto_open: bool = True):
         super().__init__(parent)
         self.setWindowTitle("Image Folder Viewer")
-        self.setMinimumWidth(480)
+        self.setMinimumWidth(560)
 
         self._config = load_app_config()
         self._profile: ProfileData | None = None
@@ -47,7 +47,7 @@ class StartupWindow(QDialog):
         self._refresh_recent_list()
 
         # 前回プロファイルの自動オープン
-        if self._config.recent_profiles:
+        if auto_open and self._config.recent_profiles:
             self._auto_open(self._config.recent_profiles[0].path)
 
     # ------------------------------------------------------------------
@@ -62,6 +62,36 @@ class StartupWindow(QDialog):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
+        # 最近使用したプロファイル一覧（2カラム）
+        recent_label = QLabel("最近使用したプロファイル")
+        layout.addWidget(recent_label)
+
+        self._recent_list = QTreeWidget()
+        self._recent_list.setColumnCount(2)
+        self._recent_list.setHeaderLabels(["プロファイル名", "パス"])
+        self._recent_list.setRootIsDecorated(False)
+        self._recent_list.setSelectionBehavior(
+            self._recent_list.SelectionBehavior.SelectRows
+        )
+        self._recent_list.header().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self._recent_list.header().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+        self._recent_list.itemDoubleClicked.connect(self._on_recent_double_click)
+        layout.addWidget(self._recent_list)
+
+        # 履歴・ファイル削除ボタン
+        btn_row2 = QHBoxLayout()
+        self._btn_remove = QPushButton("履歴から削除")
+        self._btn_remove.clicked.connect(self._on_remove_recent)
+        btn_row2.addWidget(self._btn_remove)
+        self._btn_delete_file = QPushButton("ファイルを削除")
+        self._btn_delete_file.clicked.connect(self._on_delete_file)
+        btn_row2.addWidget(self._btn_delete_file)
+        layout.addLayout(btn_row2)
+
         # アクションボタン
         btn_row = QHBoxLayout()
         self._btn_open = QPushButton("プロファイルを開く")
@@ -72,19 +102,6 @@ class StartupWindow(QDialog):
         btn_row.addWidget(self._btn_new)
         layout.addLayout(btn_row)
 
-        # 最近使用したプロファイル一覧
-        recent_label = QLabel("最近使用したプロファイル")
-        layout.addWidget(recent_label)
-
-        self._recent_list = QListWidget()
-        self._recent_list.itemDoubleClicked.connect(self._on_recent_double_click)
-        layout.addWidget(self._recent_list)
-
-        # 履歴から削除ボタン
-        self._btn_remove = QPushButton("履歴から削除")
-        self._btn_remove.clicked.connect(self._on_remove_recent)
-        layout.addWidget(self._btn_remove)
-
     # ------------------------------------------------------------------
     # ロジック
     # ------------------------------------------------------------------
@@ -92,9 +109,15 @@ class StartupWindow(QDialog):
     def _refresh_recent_list(self) -> None:
         self._recent_list.clear()
         for r in self._config.recent_profiles:
-            item = QListWidgetItem(f"{r.name}\n{r.path}")
-            item.setData(Qt.ItemDataRole.UserRole, r.path)
-            self._recent_list.addItem(item)
+            item = QTreeWidgetItem([r.name, r.path])
+            item.setData(0, Qt.ItemDataRole.UserRole, r.path)
+            self._recent_list.addTopLevelItem(item)
+
+    def _current_path(self) -> str | None:
+        item = self._recent_list.currentItem()
+        if not item:
+            return None
+        return item.data(0, Qt.ItemDataRole.UserRole)
 
     def _auto_open(self, path: str) -> None:
         try:
@@ -162,18 +185,38 @@ class StartupWindow(QDialog):
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"プロファイルを作成できません:\n{e}")
 
-    def _on_recent_double_click(self, item: QListWidgetItem) -> None:
-        path = item.data(Qt.ItemDataRole.UserRole)
+    def _on_recent_double_click(self, item: QTreeWidgetItem) -> None:
+        path = item.data(0, Qt.ItemDataRole.UserRole)
         try:
             self._open_profile(path)
         except Exception as e:
             QMessageBox.warning(self, "エラー", f"プロファイルを開けません:\n{e}")
 
     def _on_remove_recent(self) -> None:
-        item = self._recent_list.currentItem()
-        if not item:
+        path = self._current_path()
+        if not path:
             return
-        path = item.data(Qt.ItemDataRole.UserRole)
+        remove_recent_profile(self._config, path)
+        save_app_config(self._config)
+        self._refresh_recent_list()
+
+    def _on_delete_file(self) -> None:
+        path = self._current_path()
+        if not path:
+            return
+        ret = QMessageBox.question(
+            self,
+            "ファイルの削除",
+            f"プロファイルファイルを削除しますか？\n{path}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if ret != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            Path(path).unlink()
+        except Exception as e:
+            QMessageBox.critical(self, "エラー", f"ファイルを削除できません:\n{e}")
+            return
         remove_recent_profile(self._config, path)
         save_app_config(self._config)
         self._refresh_recent_list()
