@@ -188,7 +188,6 @@ class CardGrid(QWidget):
         self._view.setDragDropMode(QListView.DragDropMode.InternalMove)
         self._view.setDefaultDropAction(Qt.DropAction.MoveAction)
         self._view.setGridSize(QSize(_card_width(aspect_ratio) + 8, CARD_HEIGHT + 8))
-        self._view.doubleClicked.connect(self._on_double_click)
         self._view.activated.connect(self._on_double_click)
         self._view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._view.customContextMenuRequested.connect(self._on_context_menu)
