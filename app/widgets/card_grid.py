@@ -188,7 +188,6 @@ class CardGrid(QWidget):
         self._view.setDragDropMode(QListView.DragDropMode.InternalMove)
         self._view.setDefaultDropAction(Qt.DropAction.MoveAction)
         self._view.setGridSize(QSize(_card_width(aspect_ratio) + 8, CARD_HEIGHT + 8))
-        self._view.activated.connect(self._on_double_click)
         self._view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._view.customContextMenuRequested.connect(self._on_context_menu)
 
@@ -220,6 +219,27 @@ class CardGrid(QWidget):
         """内部の QListView にフォーカスを移す。"""
         self._view.setFocus()
 
+    def set_click_mode(self, mode: str) -> None:
+        """クリックモードを切り替える（"single" or "double"）。"""
+        try:
+            self._view.clicked.disconnect(self._on_open_card)
+        except TypeError:
+            pass
+        try:
+            self._view.doubleClicked.disconnect(self._on_open_card)
+        except TypeError:
+            pass
+        if mode == "single":
+            self._view.clicked.connect(self._on_open_card)
+        else:
+            self._view.doubleClicked.connect(self._on_open_card)
+
+    def open_selected(self) -> None:
+        """現在選択中のカードを開く（Enter キー用）。"""
+        card = self.current_card()
+        if card and Path(card.folder_path).exists():
+            self.card_opened.emit(card)
+
     def set_profile(self, profile: ProfileData) -> None:
         """プロファイルを切り替えてグリッドを更新する。"""
         self._profile = profile
@@ -237,7 +257,7 @@ class CardGrid(QWidget):
     def refresh(self) -> None:
         self._model.refresh()
 
-    def _on_double_click(self, index: QModelIndex) -> None:
+    def _on_open_card(self, index: QModelIndex) -> None:
         card: Card = index.data(Qt.ItemDataRole.UserRole)
         if card and Path(card.folder_path).exists():
             self.card_opened.emit(card)

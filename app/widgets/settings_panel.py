@@ -93,12 +93,14 @@ class SettingsPanel(QDialog):
 
     theme_changed = pyqtSignal(str)            # "light" | "dark"
     aspect_ratio_changed = pyqtSignal(str)     # "16:9" | "4:3" | "1:1"
+    click_mode_changed = pyqtSignal(str)       # "single" | "double"
 
-    def __init__(self, theme: str, aspect_ratio: str, parent=None):
+    def __init__(self, theme: str, aspect_ratio: str, click_mode: str, parent=None):
         super().__init__(parent, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self._theme = theme
         self._aspect_ratio = aspect_ratio
+        self._click_mode = click_mode
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -124,6 +126,17 @@ class SettingsPanel(QDialog):
         self._ratio_btns.selection_changed.connect(self._on_aspect_ratio_changed)
         layout.addWidget(self._ratio_btns)
 
+        # クリック操作
+        lbl_click = QLabel("カードを開く")
+        lbl_click.setStyleSheet("font-size: 11px; color: #888;")
+        layout.addWidget(lbl_click)
+
+        self._click_btns = _SegmentedButtons(
+            ["シングル", "ダブル"], self._click_mode_label(), self
+        )
+        self._click_btns.selection_changed.connect(self._on_click_mode_changed)
+        layout.addWidget(self._click_btns)
+
         self.setFixedWidth(200)
 
     def _theme_label(self) -> str:
@@ -137,6 +150,14 @@ class SettingsPanel(QDialog):
     def _on_aspect_ratio_changed(self, ratio: str) -> None:
         self._aspect_ratio = ratio
         self.aspect_ratio_changed.emit(ratio)
+
+    def _click_mode_label(self) -> str:
+        return "シングル" if self._click_mode == "single" else "ダブル"
+
+    def _on_click_mode_changed(self, label: str) -> None:
+        mode = "single" if label == "シングル" else "double"
+        self._click_mode = mode
+        self.click_mode_changed.emit(mode)
 
     def popup_below(self, anchor: QWidget) -> None:
         """指定ウィジェットの直下にポップアップ表示する。"""

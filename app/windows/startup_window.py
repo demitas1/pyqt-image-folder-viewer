@@ -79,7 +79,10 @@ class StartupWindow(QDialog):
         self._recent_list.header().setSectionResizeMode(
             1, QHeaderView.ResizeMode.Stretch
         )
-        self._recent_list.itemDoubleClicked.connect(self._on_recent_double_click)
+        if self._config.card_open_click == "single":
+            self._recent_list.itemClicked.connect(self._on_recent_item_clicked)
+        else:
+            self._recent_list.itemDoubleClicked.connect(self._on_recent_item_clicked)
         layout.addWidget(self._recent_list)
 
         # 履歴・ファイル削除ボタン
@@ -128,7 +131,10 @@ class StartupWindow(QDialog):
     def _open_profile(self, path: str) -> None:
         profile = load_profile(path)
         add_recent_profile(self._config, path, Path(path).stem)
-        save_app_config(self._config)
+        try:
+            save_app_config(self._config)
+        except Exception:
+            pass  # 将来エラー通知を追加予定
 
         self._profile = profile
         self._profile_path = path
@@ -178,14 +184,17 @@ class StartupWindow(QDialog):
         try:
             profile = create_empty_profile(path)
             add_recent_profile(self._config, path, Path(path).stem)
-            save_app_config(self._config)
+            try:
+                save_app_config(self._config)
+            except Exception:
+                pass  # 将来エラー通知を追加予定
             self._profile = profile
             self._profile_path = path
             self._launch_main_window()
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"プロファイルを作成できません:\n{e}")
 
-    def _on_recent_double_click(self, item: QTreeWidgetItem) -> None:
+    def _on_recent_item_clicked(self, item: QTreeWidgetItem) -> None:
         path = item.data(0, Qt.ItemDataRole.UserRole)
         try:
             self._open_profile(path)
@@ -197,7 +206,10 @@ class StartupWindow(QDialog):
         if not path:
             return
         remove_recent_profile(self._config, path)
-        save_app_config(self._config)
+        try:
+            save_app_config(self._config)
+        except Exception:
+            pass  # 将来エラー通知を追加予定
         self._refresh_recent_list()
 
     def _on_delete_file(self) -> None:
@@ -218,5 +230,8 @@ class StartupWindow(QDialog):
             QMessageBox.critical(self, "エラー", f"ファイルを削除できません:\n{e}")
             return
         remove_recent_profile(self._config, path)
-        save_app_config(self._config)
+        try:
+            save_app_config(self._config)
+        except Exception:
+            pass  # 将来エラー通知を追加予定
         self._refresh_recent_list()

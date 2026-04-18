@@ -56,6 +56,7 @@ class AppConfig:
     theme: str = "dark"
     focus_on_startup: bool = True
     thumbnail_aspect_ratio: str = "16:9"
+    card_open_click: str = "single"  # "single" or "double"
 
     @classmethod
     def from_dict(cls, d: dict) -> AppConfig:
@@ -68,6 +69,7 @@ class AppConfig:
             theme=d.get("theme", "dark"),
             focus_on_startup=d.get("focusOnStartup", True),
             thumbnail_aspect_ratio=d.get("thumbnailAspectRatio", "16:9"),
+            card_open_click=d.get("cardOpenClick", "single"),
         )
 
     def to_dict(self) -> dict:
@@ -78,6 +80,7 @@ class AppConfig:
             "theme": self.theme,
             "focusOnStartup": self.focus_on_startup,
             "thumbnailAspectRatio": self.thumbnail_aspect_ratio,
+            "cardOpenClick": self.card_open_click,
         }
 
 

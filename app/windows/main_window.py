@@ -108,6 +108,7 @@ class MainWindow(QMainWindow):
             aspect_ratio=self._config.thumbnail_aspect_ratio,
             parent=self,
         )
+        self._card_grid.set_click_mode(self._config.card_open_click)
         self._card_grid.card_opened.connect(self._on_card_open)
         self._card_grid.profile_changed.connect(self._save_profile)
         self.setCentralWidget(self._card_grid)
@@ -118,6 +119,9 @@ class MainWindow(QMainWindow):
         self._setup_shortcuts()
 
     def _setup_shortcuts(self) -> None:
+        QShortcut(QKeySequence(Qt.Key.Key_Return), self).activated.connect(
+            self._card_grid.open_selected
+        )
         QShortcut(QKeySequence(Qt.Key.Key_Delete), self).activated.connect(
             self._on_delete_selected
         )
@@ -234,7 +238,10 @@ class MainWindow(QMainWindow):
         self._profile_path = path
 
         add_recent_profile(self._config, path, Path(path).stem)
-        save_app_config(self._config)
+        try:
+            save_app_config(self._config)
+        except Exception:
+            pass  # 将来エラー通知を追加予定
 
         self.setWindowTitle(self._window_title())
         self._card_grid.set_profile(new_profile)
@@ -269,7 +276,10 @@ class MainWindow(QMainWindow):
 
         self._profile_path = path
         add_recent_profile(self._config, path, Path(path).stem)
-        save_app_config(self._config)
+        try:
+            save_app_config(self._config)
+        except Exception:
+            pass  # 将来エラー通知を追加予定
 
         self.setWindowTitle(self._window_title())
         self._refresh_profile_combo()
@@ -289,11 +299,21 @@ class MainWindow(QMainWindow):
         panel = SettingsPanel(
             theme=self._config.theme,
             aspect_ratio=self._config.thumbnail_aspect_ratio,
+            click_mode=self._config.card_open_click,
             parent=self,
         )
         panel.theme_changed.connect(self._on_theme_changed)
         panel.aspect_ratio_changed.connect(self._on_aspect_ratio_changed)
+        panel.click_mode_changed.connect(self._on_click_mode_changed)
         panel.popup_below(self._btn_settings)
+
+    def _on_click_mode_changed(self, mode: str) -> None:
+        self._config.card_open_click = mode
+        self._card_grid.set_click_mode(mode)
+        try:
+            save_app_config(self._config)
+        except Exception:
+            pass  # 将来エラー通知を追加予定
 
     def _on_aspect_ratio_changed(self, ratio: str) -> None:
         self._config.thumbnail_aspect_ratio = ratio
@@ -301,7 +321,7 @@ class MainWindow(QMainWindow):
         try:
             save_app_config(self._config)
         except Exception:
-            pass
+            pass  # 将来エラー通知を追加予定
 
     def _on_theme_changed(self, theme: str) -> None:
         self._config.theme = theme
@@ -312,7 +332,7 @@ class MainWindow(QMainWindow):
         try:
             save_app_config(self._config)
         except Exception:
-            pass
+            pass  # 将来エラー通知を追加予定
 
     def _on_add_card(self) -> None:
         from app.windows.card_dialog import CardDialog
