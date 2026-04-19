@@ -90,3 +90,13 @@ class ThumbnailLoader(QObject):
     def wait_for_done(self) -> None:
         """全タスク完了まで待機（テスト・終了時用）"""
         self._pool.waitForDone()
+
+
+_shared_loaders: dict[int, "ThumbnailLoader"] = {}
+
+
+def shared_loader(size: int) -> "ThumbnailLoader":
+    """サイズ別共有 ThumbnailLoader を返す。同サイズは同一インスタンス・キャッシュを共有する。"""
+    if size not in _shared_loaders:
+        _shared_loaders[size] = ThumbnailLoader(size=size)
+    return _shared_loaders[size]

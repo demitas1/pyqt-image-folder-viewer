@@ -87,14 +87,14 @@ class CardDialog(QDialog):
                 self._title_edit.setText(os.path.basename(path))
 
     def _on_browse_thumbnail(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "サムネイル画像を選択",
-            self._folder_edit.text() or "",
-            "画像ファイル (*.jpg *.jpeg *.png *.gif *.webp *.bmp)",
-        )
-        if path:
-            self._thumb_edit.setText(path)
+        from app.widgets.image_picker import ImagePickerDialog
+
+        start = self._thumb_edit.text() or self._folder_edit.text() or ""
+        dlg = ImagePickerDialog(start_path=start, parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            path = dlg.selected_path()
+            if path:
+                self._thumb_edit.setText(path)
 
     def result_card(self) -> Card:
         """ダイアログの入力内容を反映した Card を返す。"""
