@@ -32,7 +32,7 @@ from PyQt6.QtWidgets import (
 
 from app.models.profile import Card, ProfileData
 from app.utils import theme as theme_mod
-from app.widgets.thumbnail_loader import ThumbnailLoader
+from app.widgets.thumbnail_loader import shared_loader
 
 # サムネイル高さ固定・最大幅（16:9）でキャッシュ生成
 THUMB_H = 180
@@ -262,7 +262,7 @@ class CardGrid(QWidget):
         super().__init__(parent)
         self._profile = profile
         self._aspect_ratio = aspect_ratio
-        self._loader = ThumbnailLoader(size=THUMBNAIL_SIZE)
+        self._loader = shared_loader(THUMBNAIL_SIZE)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
