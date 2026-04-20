@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QDialog,
     QDialogButtonBox,
-    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -79,12 +78,17 @@ class CardDialog(QDialog):
         self._recursive_check.setChecked(card.recursive)
 
     def _on_browse_folder(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "フォルダを選択")
-        if path:
-            self._folder_edit.setText(path)
-            if not self._title_edit.text():
-                import os
-                self._title_edit.setText(os.path.basename(path))
+        from app.widgets.image_picker import ImagePickerDialog
+
+        start = self._folder_edit.text() or ""
+        dlg = ImagePickerDialog(start_path=start, mode="folder", parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            path = dlg.selected_path()
+            if path:
+                self._folder_edit.setText(path)
+                if not self._title_edit.text():
+                    import os
+                    self._title_edit.setText(os.path.basename(path))
 
     def _on_browse_thumbnail(self) -> None:
         from app.widgets.image_picker import ImagePickerDialog

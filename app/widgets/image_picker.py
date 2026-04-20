@@ -157,11 +157,16 @@ class _PickerDelegate(QStyledItemDelegate):
 
 
 class ImagePickerDialog(QDialog):
-    """フォルダ内の画像をサムネイル付きグリッドで表示して選択するダイアログ。"""
+    """フォルダ内の画像・フォルダをグリッドで表示して選択するダイアログ。
 
-    def __init__(self, start_path: str = "", parent=None):
+    mode="image"（デフォルト）: 画像ファイルを選択して返す
+    mode="folder": フォルダのみ表示し、フォルダパスを返す
+    """
+
+    def __init__(self, start_path: str = "", mode: str = "image", parent=None):
         super().__init__(parent)
-        self.setWindowTitle("サムネイル画像を選択")
+        self._mode = mode
+        self.setWindowTitle("フォルダを選択" if mode == "folder" else "サムネイル画像を選択")
         self.setMinimumSize(640, 520)
         self._selected_path: str | None = None
         self._current_dir: Path = self._resolve_start(start_path)
@@ -216,7 +221,10 @@ class ImagePickerDialog(QDialog):
         )
         self._buttons.button(QDialogButtonBox.StandardButton.Ok).setText("決定")
         self._buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("キャンセル")
-        self._buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
+        # フォルダモードは OK を常に有効（未選択時は現在ディレクトリを返す）
+        self._buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(
+            self._mode == "folder"
+        )
         self._buttons.accepted.connect(self.accept)
         self._buttons.rejected.connect(self.reject)
         layout.addWidget(self._buttons)
@@ -253,11 +261,17 @@ class ImagePickerDialog(QDialog):
                 continue
             if entry.is_dir():
                 items.append(_PickerItem(str(entry), entry.name, is_folder=True))
-            elif entry.suffix.lower() in IMAGE_EXTENSIONS:
+            elif self._mode == "image" and entry.suffix.lower() in IMAGE_EXTENSIONS:
                 items.append(_PickerItem(str(entry), entry.name, is_folder=False))
 
         self._model.set_items(items)
         self._view.clearSelection()
+
+        # フォルダモードでは現在ディレクトリを選択状態にする
+        if self._mode == "folder":
+            self._selected_path = str(directory)
+            name = directory.name or str(directory)
+            self._selection_label.setText(f"選択中: {name}")
 
     # ------------------------------------------------------------------
     # スロット
@@ -268,7 +282,12 @@ class ImagePickerDialog(QDialog):
 
     def _on_item_clicked(self, index: QModelIndex) -> None:
         item: _PickerItem = index.data(Qt.ItemDataRole.UserRole)
-        if item and not item.is_folder:
+        if not item:
+            return
+        if self._mode == "folder" and item.is_folder:
+            self._selected_path = item.path
+            self._selection_label.setText(f"選択中: {item.name}")
+        elif self._mode == "image" and not item.is_folder:
             self._selected_path = item.path
             self._selection_label.setText(f"選択中: {item.name}")
             self._buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(True)
