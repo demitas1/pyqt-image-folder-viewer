@@ -10,13 +10,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from PyQt6.QtCore import QAbstractListModel, QModelIndex, QSize, Qt
-from PyQt6.QtGui import QColor, QPainter, QPixmap
+from PyQt6.QtCore import QAbstractListModel, QModelIndex, QSize, QStandardPaths, Qt, QTimer
+from PyQt6.QtGui import QColor, QKeyEvent, QPainter, QPixmap
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListView,
     QPushButton,
     QSizePolicy,
@@ -29,6 +30,17 @@ from PyQt6.QtWidgets import (
 from app.widgets.thumbnail_loader import shared_loader
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+
+# アドレスバーのデバウンス待機時間（ms）
+_ADDRESS_DEBOUNCE_MS = 300
+
+# クイックアクセスボタン（ラベル, StandardLocation）
+_QUICK_PLACES: list[tuple[str, QStandardPaths.StandardLocation]] = [
+    ("ホーム",         QStandardPaths.StandardLocation.HomeLocation),
+    ("デスクトップ",   QStandardPaths.StandardLocation.DesktopLocation),
+    ("ダウンロード",   QStandardPaths.StandardLocation.DownloadLocation),
+    ("ピクチャ",       QStandardPaths.StandardLocation.PicturesLocation),
+]
 
 # サムネイル表示サイズ（正方形）とロードサイズ
 _THUMB_PX = 120
@@ -157,11 +169,19 @@ class _PickerDelegate(QStyledItemDelegate):
 
 
 class ImagePickerDialog(QDialog):
-    """フォルダ内の画像をサムネイル付きグリッドで表示して選択するダイアログ。"""
+    """フォルダ内の画像・フォルダをグリッドで表示して選択するダイアログ。
 
-    def __init__(self, start_path: str = "", parent=None):
+    mode="image"（デフォルト）: 画像ファイルを選択して返す
+    mode="folder": フォルダのみ表示し、フォルダパスを返す
+    """
+
+    def __init__(self, start_path: str = "", mode: str = "image",
+                 address_debounce_ms: int = _ADDRESS_DEBOUNCE_MS, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("サムネイル画像を選択")
+        self._mode = mode
+        self._debounce_ms = address_debounce_ms
+        self._address_valid = True
+        self.setWindowTitle("フォルダを選択" if mode == "folder" else "サムネイル画像を選択")
         self.setMinimumSize(640, 520)
         self._selected_path: str | None = None
         self._current_dir: Path = self._resolve_start(start_path)
@@ -181,13 +201,32 @@ class ImagePickerDialog(QDialog):
         self._btn_up = QPushButton("↑ 上へ")
         self._btn_up.setFixedWidth(80)
         self._btn_up.clicked.connect(self._on_go_up)
-        self._path_label = QLabel()
-        self._path_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        self._address_bar = QLineEdit()
+        self._address_bar.setPlaceholderText("パスを入力して Enter")
+        self._debounce_timer = QTimer(self)
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.timeout.connect(self._on_address_validate)
+        self._address_bar.textChanged.connect(
+            lambda: self._debounce_timer.start(self._debounce_ms)
         )
+        self._address_bar.returnPressed.connect(self._on_address_committed)
         nav.addWidget(self._btn_up)
-        nav.addWidget(self._path_label)
+        nav.addWidget(self._address_bar)
         layout.addLayout(nav)
+
+        # クイックアクセスボタン
+        quick = QHBoxLayout()
+        for label, loc in _QUICK_PLACES:
+            path_str = QStandardPaths.writableLocation(loc)
+            p = Path(path_str) if path_str else None
+            btn = QPushButton(label)
+            if p and p.is_dir():
+                btn.clicked.connect(lambda checked, d=p: self._navigate(d))
+            else:
+                btn.hide()
+            quick.addWidget(btn)
+        quick.addStretch()
+        layout.addLayout(quick)
 
         # グリッドビュー
         self._model = _PickerModel(self)
@@ -214,9 +253,17 @@ class ImagePickerDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok
             | QDialogButtonBox.StandardButton.Cancel
         )
-        self._buttons.button(QDialogButtonBox.StandardButton.Ok).setText("決定")
-        self._buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("キャンセル")
-        self._buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
+        ok_btn = self._buttons.button(QDialogButtonBox.StandardButton.Ok)
+        cancel_btn = self._buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        ok_btn.setText("決定")
+        cancel_btn.setText("キャンセル")
+        # アドレスバーの Enter がダイアログ OK に伝播しないよう autoDefault を無効化
+        ok_btn.setAutoDefault(False)
+        ok_btn.setDefault(False)
+        cancel_btn.setAutoDefault(False)
+        self._ok_btn = ok_btn
+        # フォルダモードは OK を常に有効（未選択時は現在ディレクトリを返す）
+        ok_btn.setEnabled(self._mode == "folder")
         self._buttons.accepted.connect(self.accept)
         self._buttons.rejected.connect(self.reject)
         layout.addWidget(self._buttons)
@@ -236,7 +283,11 @@ class ImagePickerDialog(QDialog):
 
     def _navigate(self, directory: Path) -> None:
         self._current_dir = directory
-        self._path_label.setText(str(directory))
+        self._debounce_timer.stop()
+        self._address_bar.blockSignals(True)
+        self._address_bar.setText(str(directory))
+        self._address_bar.blockSignals(False)
+        self._address_bar.setStyleSheet("")
         self._btn_up.setEnabled(directory.parent != directory)
 
         items: list[_PickerItem] = []
@@ -253,11 +304,17 @@ class ImagePickerDialog(QDialog):
                 continue
             if entry.is_dir():
                 items.append(_PickerItem(str(entry), entry.name, is_folder=True))
-            elif entry.suffix.lower() in IMAGE_EXTENSIONS:
+            elif self._mode == "image" and entry.suffix.lower() in IMAGE_EXTENSIONS:
                 items.append(_PickerItem(str(entry), entry.name, is_folder=False))
 
         self._model.set_items(items)
         self._view.clearSelection()
+
+        # フォルダモードでは現在ディレクトリを選択状態にする
+        if self._mode == "folder":
+            self._selected_path = str(directory)
+            name = directory.name or str(directory)
+            self._selection_label.setText(f"選択中: {name}")
 
     # ------------------------------------------------------------------
     # スロット
@@ -266,12 +323,44 @@ class ImagePickerDialog(QDialog):
     def _on_go_up(self) -> None:
         self._navigate(self._current_dir.parent)
 
+    def _on_address_validate(self) -> None:
+        """デバウンス後にバリデートのみ実施（ナビゲートしない）。"""
+        p = Path(self._address_bar.text().strip())
+        self._address_valid = p.is_dir()
+        self._address_bar.setStyleSheet(
+            "" if self._address_valid else "QLineEdit { border: 1px solid red; }"
+        )
+        self._update_ok_btn()
+
+    def _on_address_committed(self) -> None:
+        """Enter 押下時：タイマーをキャンセルしてナビゲートを試みる。"""
+        self._debounce_timer.stop()
+        p = Path(self._address_bar.text().strip())
+        if p.is_dir():
+            self._navigate(p)
+        else:
+            self._address_valid = False
+            self._address_bar.setStyleSheet("QLineEdit { border: 1px solid red; }")
+            self._update_ok_btn()
+
+    def _update_ok_btn(self) -> None:
+        if self._mode == "folder":
+            self._ok_btn.setEnabled(self._address_valid)
+        else:
+            has_selection = bool(self._selected_path)
+            self._ok_btn.setEnabled(self._address_valid and has_selection)
+
     def _on_item_clicked(self, index: QModelIndex) -> None:
         item: _PickerItem = index.data(Qt.ItemDataRole.UserRole)
-        if item and not item.is_folder:
+        if not item:
+            return
+        if self._mode == "folder" and item.is_folder:
             self._selected_path = item.path
             self._selection_label.setText(f"選択中: {item.name}")
-            self._buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(True)
+        elif self._mode == "image" and not item.is_folder:
+            self._selected_path = item.path
+            self._selection_label.setText(f"選択中: {item.name}")
+            self._update_ok_btn()
 
     def _on_item_double_clicked(self, index: QModelIndex) -> None:
         item: _PickerItem = index.data(Qt.ItemDataRole.UserRole)
@@ -282,6 +371,14 @@ class ImagePickerDialog(QDialog):
         else:
             self._selected_path = item.path
             self.accept()
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        # アドレスバー入力中の Enter/Return を QDialog::keyPressEvent に伝播させない
+        if (event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+                and self._address_bar.hasFocus()):
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     # ------------------------------------------------------------------
     # 結果取得

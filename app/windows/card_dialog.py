@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QDialog,
     QDialogButtonBox,
-    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -42,6 +41,7 @@ class CardDialog(QDialog):
         # フォルダパス
         folder_row = QHBoxLayout()
         self._folder_edit = QLineEdit()
+        self._folder_edit.textChanged.connect(self._on_folder_text_changed)
         btn_folder = QPushButton("参照...")
         btn_folder.clicked.connect(self._on_browse_folder)
         folder_row.addWidget(self._folder_edit)
@@ -52,6 +52,7 @@ class CardDialog(QDialog):
         thumb_row = QHBoxLayout()
         self._thumb_edit = QLineEdit()
         self._thumb_edit.setPlaceholderText("（未設定）")
+        self._thumb_edit.textChanged.connect(self._on_thumb_text_changed)
         btn_thumb = QPushButton("選択...")
         btn_thumb.clicked.connect(self._on_browse_thumbnail)
         thumb_row.addWidget(self._thumb_edit)
@@ -68,6 +69,7 @@ class CardDialog(QDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
+        self._ok_btn = buttons.button(QDialogButtonBox.StandardButton.Ok)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -77,14 +79,40 @@ class CardDialog(QDialog):
         self._folder_edit.setText(card.folder_path)
         self._thumb_edit.setText(card.thumbnail or "")
         self._recursive_check.setChecked(card.recursive)
+        self._update_ok_state()
+
+    def _on_folder_text_changed(self, text: str) -> None:
+        from pathlib import Path
+        invalid = bool(text and not Path(text).is_dir())
+        self._folder_edit.setStyleSheet("QLineEdit { border: 1px solid red; }" if invalid else "")
+        self._update_ok_state()
+
+    def _on_thumb_text_changed(self, text: str) -> None:
+        from pathlib import Path
+        invalid = bool(text and not Path(text).is_file())
+        self._thumb_edit.setStyleSheet("QLineEdit { border: 1px solid red; }" if invalid else "")
+        self._update_ok_state()
+
+    def _update_ok_state(self) -> None:
+        from pathlib import Path
+        folder = self._folder_edit.text()
+        thumb = self._thumb_edit.text()
+        folder_ok = bool(folder) and Path(folder).is_dir()
+        thumb_ok = not thumb or Path(thumb).is_file()
+        self._ok_btn.setEnabled(folder_ok and thumb_ok)
 
     def _on_browse_folder(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "フォルダを選択")
-        if path:
-            self._folder_edit.setText(path)
-            if not self._title_edit.text():
-                import os
-                self._title_edit.setText(os.path.basename(path))
+        from app.widgets.image_picker import ImagePickerDialog
+
+        start = self._folder_edit.text() or ""
+        dlg = ImagePickerDialog(start_path=start, mode="folder", parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            path = dlg.selected_path()
+            if path:
+                self._folder_edit.setText(path)
+                if not self._title_edit.text():
+                    import os
+                    self._title_edit.setText(os.path.basename(path))
 
     def _on_browse_thumbnail(self) -> None:
         from app.widgets.image_picker import ImagePickerDialog
