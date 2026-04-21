@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from PyQt6.QtCore import QAbstractListModel, QModelIndex, QSize, Qt, QTimer
+from PyQt6.QtCore import QAbstractListModel, QModelIndex, QSize, QStandardPaths, Qt, QTimer
 from PyQt6.QtGui import QColor, QKeyEvent, QPainter, QPixmap
 from PyQt6.QtWidgets import (
     QDialog,
@@ -33,6 +33,14 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
 
 # アドレスバーのデバウンス待機時間（ms）
 _ADDRESS_DEBOUNCE_MS = 300
+
+# クイックアクセスボタン（ラベル, StandardLocation）
+_QUICK_PLACES: list[tuple[str, QStandardPaths.StandardLocation]] = [
+    ("ホーム",         QStandardPaths.StandardLocation.HomeLocation),
+    ("デスクトップ",   QStandardPaths.StandardLocation.DesktopLocation),
+    ("ダウンロード",   QStandardPaths.StandardLocation.DownloadLocation),
+    ("ピクチャ",       QStandardPaths.StandardLocation.PicturesLocation),
+]
 
 # サムネイル表示サイズ（正方形）とロードサイズ
 _THUMB_PX = 120
@@ -205,6 +213,20 @@ class ImagePickerDialog(QDialog):
         nav.addWidget(self._btn_up)
         nav.addWidget(self._address_bar)
         layout.addLayout(nav)
+
+        # クイックアクセスボタン
+        quick = QHBoxLayout()
+        for label, loc in _QUICK_PLACES:
+            path_str = QStandardPaths.writableLocation(loc)
+            p = Path(path_str) if path_str else None
+            btn = QPushButton(label)
+            if p and p.is_dir():
+                btn.clicked.connect(lambda checked, d=p: self._navigate(d))
+            else:
+                btn.hide()
+            quick.addWidget(btn)
+        quick.addStretch()
+        layout.addLayout(quick)
 
         # グリッドビュー
         self._model = _PickerModel(self)
