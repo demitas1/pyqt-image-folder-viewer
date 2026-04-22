@@ -13,6 +13,7 @@ from pathlib import Path
 from PyQt6.QtCore import QAbstractListModel, QModelIndex, QSize, QStandardPaths, Qt, QTimer
 from PyQt6.QtGui import QColor, QKeyEvent, QPainter, QPixmap
 from PyQt6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
@@ -33,6 +34,13 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
 
 # アドレスバーのデバウンス待機時間（ms）
 _ADDRESS_DEBOUNCE_MS = 300
+
+# ソートオプション（表示ラベル, 内部キー）
+_SORT_OPTIONS: list[tuple[str, str]] = [
+    ("名前",     "name"),
+    ("更新日時", "mtime"),
+    ("サイズ",   "size"),
+]
 
 # クイックアクセスボタン（ラベル, StandardLocation）
 _QUICK_PLACES: list[tuple[str, QStandardPaths.StandardLocation]] = [
@@ -56,6 +64,8 @@ class _PickerItem:
     path: str
     name: str
     is_folder: bool
+    mtime: float = 0.0
+    size: int = 0
 
 
 class _PickerModel(QAbstractListModel):
@@ -181,6 +191,8 @@ class ImagePickerDialog(QDialog):
         self._mode = mode
         self._debounce_ms = address_debounce_ms
         self._address_valid = True
+        self._sort_key: str = "name"
+        self._sort_ascending: bool = True
         self.setWindowTitle("フォルダを選択" if mode == "folder" else "サムネイル画像を選択")
         self.setMinimumSize(640, 520)
         self._selected_path: str | None = None
@@ -226,6 +238,17 @@ class ImagePickerDialog(QDialog):
                 btn.hide()
             quick.addWidget(btn)
         quick.addStretch()
+        self._sort_combo = QComboBox()
+        for label, key in _SORT_OPTIONS:
+            self._sort_combo.addItem(label, userData=key)
+        self._sort_combo.currentIndexChanged.connect(self._on_sort_changed)
+        quick.addWidget(self._sort_combo)
+        self._sort_dir_btn = QPushButton("↑")
+        self._sort_dir_btn.setCheckable(True)
+        self._sort_dir_btn.setChecked(True)
+        self._sort_dir_btn.setFixedWidth(32)
+        self._sort_dir_btn.toggled.connect(self._on_sort_dir_toggled)
+        quick.addWidget(self._sort_dir_btn)
         layout.addLayout(quick)
 
         # グリッドビュー
@@ -290,22 +313,46 @@ class ImagePickerDialog(QDialog):
         self._address_bar.setStyleSheet("")
         self._btn_up.setEnabled(directory.parent != directory)
 
-        items: list[_PickerItem] = []
         try:
-            entries = sorted(
-                directory.iterdir(),
-                key=lambda p: (not p.is_dir(), p.name.lower()),
-            )
+            all_entries = [p for p in directory.iterdir() if not p.name.startswith(".")]
         except PermissionError:
-            entries = []
+            all_entries = []
 
-        for entry in entries:
-            if entry.name.startswith("."):
-                continue
-            if entry.is_dir():
-                items.append(_PickerItem(str(entry), entry.name, is_folder=True))
-            elif self._mode == "image" and entry.suffix.lower() in IMAGE_EXTENSIONS:
-                items.append(_PickerItem(str(entry), entry.name, is_folder=False))
+        def _sort_key(p: Path):
+            if self._sort_key == "mtime":
+                try:
+                    return p.stat().st_mtime
+                except OSError:
+                    return 0.0
+            elif self._sort_key == "size":
+                try:
+                    return p.stat().st_size if p.is_file() else 0
+                except OSError:
+                    return 0
+            return p.name.lower()
+
+        rev = not self._sort_ascending
+        folders = sorted([p for p in all_entries if p.is_dir()], key=_sort_key, reverse=rev)
+        files = sorted([p for p in all_entries if not p.is_dir()], key=_sort_key, reverse=rev)
+
+        items: list[_PickerItem] = []
+        for entry in folders:
+            try:
+                st = entry.stat()
+                mtime, size = st.st_mtime, 0
+            except OSError:
+                mtime, size = 0.0, 0
+            items.append(_PickerItem(str(entry), entry.name, is_folder=True, mtime=mtime, size=size))
+        if self._mode == "image":
+            for entry in files:
+                if entry.suffix.lower() not in IMAGE_EXTENSIONS:
+                    continue
+                try:
+                    st = entry.stat()
+                    mtime, size = st.st_mtime, st.st_size
+                except OSError:
+                    mtime, size = 0.0, 0
+                items.append(_PickerItem(str(entry), entry.name, is_folder=False, mtime=mtime, size=size))
 
         self._model.set_items(items)
         self._view.clearSelection()
@@ -322,6 +369,15 @@ class ImagePickerDialog(QDialog):
 
     def _on_go_up(self) -> None:
         self._navigate(self._current_dir.parent)
+
+    def _on_sort_changed(self, index: int) -> None:
+        self._sort_key = self._sort_combo.itemData(index)
+        self._navigate(self._current_dir)
+
+    def _on_sort_dir_toggled(self, checked: bool) -> None:
+        self._sort_ascending = checked
+        self._sort_dir_btn.setText("↑" if checked else "↓")
+        self._navigate(self._current_dir)
 
     def _on_address_validate(self) -> None:
         """デバウンス後にバリデートのみ実施（ナビゲートしない）。"""
