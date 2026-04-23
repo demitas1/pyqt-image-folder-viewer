@@ -58,6 +58,10 @@ _ITEM_W = _THUMB_PX + 8
 _ITEM_H = 4 + _THUMB_PX + 4 + _LABEL_H + 4
 _GRID_SIZE = QSize(_ITEM_W + 8, _ITEM_H + 8)
 
+# リスト表示サイズ
+_LIST_ROW_H = 28
+_LIST_THUMB_PX = 20
+
 
 @dataclass
 class _PickerItem:
@@ -100,8 +104,14 @@ class _PickerDelegate(QStyledItemDelegate):
         self._view = view
         self._loader = shared_loader(_LOADER_SIZE)
         self._pixmaps: dict[str, QPixmap | None] = {}
+        self._is_list_mode: bool = False
+
+    def set_list_mode(self, enabled: bool) -> None:
+        self._is_list_mode = enabled
 
     def sizeHint(self, option, index) -> QSize:
+        if self._is_list_mode:
+            return QSize(200, _LIST_ROW_H)
         return QSize(_ITEM_W, _ITEM_H)
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
@@ -113,10 +123,15 @@ class _PickerDelegate(QStyledItemDelegate):
         is_selected = bool(option.state & QStyle.StateFlag.State_Selected)
         palette = option.palette
 
-        # 背景
         bg = palette.highlight().color() if is_selected else palette.base().color()
         painter.fillRect(rect, bg)
 
+        if self._is_list_mode:
+            self._paint_list(painter, rect, item, is_selected, palette)
+        else:
+            self._paint_icon(painter, rect, item, is_selected, palette)
+
+    def _paint_icon(self, painter, rect, item, is_selected, palette) -> None:
         # サムネイル領域（ラベル分を下から除く）
         thumb_rect = rect.adjusted(4, 4, -4, -(4 + _LABEL_H + 4))
 
@@ -136,18 +151,15 @@ class _PickerDelegate(QStyledItemDelegate):
 
             pixmap = self._pixmaps.get(item.path)
             if pixmap:
+                painter.fillRect(thumb_rect, QColor(0, 0, 0))
                 scaled = pixmap.scaled(
                     thumb_rect.size(),
-                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                    Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 )
-                x_off = (scaled.width() - thumb_rect.width()) // 2
-                y_off = (scaled.height() - thumb_rect.height()) // 2
-                painter.drawPixmap(
-                    thumb_rect,
-                    scaled,
-                    scaled.rect().adjusted(x_off, y_off, -x_off, -y_off),
-                )
+                x_off = (thumb_rect.width() - scaled.width()) // 2
+                y_off = (thumb_rect.height() - scaled.height()) // 2
+                painter.drawPixmap(thumb_rect.x() + x_off, thumb_rect.y() + y_off, scaled)
             else:
                 painter.fillRect(thumb_rect, palette.mid().color())
                 painter.setPen(palette.placeholderText().color())
@@ -173,6 +185,39 @@ class _PickerDelegate(QStyledItemDelegate):
             label_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter, elided
         )
 
+    def _paint_list(self, painter, rect, item, is_selected, palette) -> None:
+        pad = (rect.height() - _LIST_THUMB_PX) // 2
+        thumb_rect = rect.adjusted(4, pad, 4 + _LIST_THUMB_PX - rect.width(), -pad)
+
+        if item.is_folder:
+            painter.setPen(palette.text().color())
+            painter.drawText(thumb_rect, Qt.AlignmentFlag.AlignCenter, "📁")
+        else:
+            if item.path not in self._pixmaps:
+                self._pixmaps[item.path] = None
+                self._loader.request(item.path, self._on_thumbnail_ready)
+
+            pixmap = self._pixmaps.get(item.path)
+            if pixmap:
+                painter.fillRect(thumb_rect, QColor(0, 0, 0))
+                scaled = pixmap.scaled(
+                    thumb_rect.size(),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                x_off = (thumb_rect.width() - scaled.width()) // 2
+                y_off = (thumb_rect.height() - scaled.height()) // 2
+                painter.drawPixmap(thumb_rect.x() + x_off, thumb_rect.y() + y_off, scaled)
+            else:
+                painter.setPen(palette.placeholderText().color())
+                painter.drawText(thumb_rect, Qt.AlignmentFlag.AlignCenter, "🖼")
+
+        painter.setPen(palette.highlightedText().color() if is_selected else palette.text().color())
+        text_rect = rect.adjusted(4 + _LIST_THUMB_PX + 4, 0, -4, 0)
+        fm = painter.fontMetrics()
+        elided = fm.elidedText(item.name, Qt.TextElideMode.ElideRight, text_rect.width())
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, elided)
+
     def _on_thumbnail_ready(self, path: str, pixmap: QPixmap | None) -> None:
         self._pixmaps[path] = pixmap
         self._view.viewport().update()
@@ -194,6 +239,7 @@ class ImagePickerDialog(QDialog):
         self._sort_key: str = "name"
         self._sort_ascending: bool = True
         self._show_hidden: bool = False
+        self._icon_mode: bool = True
         self.setWindowTitle("フォルダを選択" if mode == "folder" else "サムネイル画像を選択")
         self.setMinimumSize(640, 520)
         self._selected_path: str | None = None
@@ -255,6 +301,11 @@ class ImagePickerDialog(QDialog):
         self._sort_dir_btn.setFixedWidth(32)
         self._sort_dir_btn.toggled.connect(self._on_sort_dir_toggled)
         quick.addWidget(self._sort_dir_btn)
+        self._view_btn = QPushButton("リスト")
+        self._view_btn.setCheckable(True)
+        self._view_btn.setChecked(False)
+        self._view_btn.toggled.connect(self._on_view_toggled)
+        quick.addWidget(self._view_btn)
         layout.addLayout(quick)
 
         # グリッドビュー
@@ -391,6 +442,22 @@ class ImagePickerDialog(QDialog):
     def _on_toggle_hidden(self, checked: bool) -> None:
         self._show_hidden = checked
         self._navigate(self._current_dir)
+
+    def _on_view_toggled(self, checked: bool) -> None:
+        self._set_view_mode(not checked)
+
+    def _set_view_mode(self, icon_mode: bool) -> None:
+        self._icon_mode = icon_mode
+        self._delegate.set_list_mode(not icon_mode)
+        if icon_mode:
+            self._view.setViewMode(QListView.ViewMode.IconMode)
+            self._view.setGridSize(_GRID_SIZE)
+            self._view.setSpacing(4)
+        else:
+            self._view.setViewMode(QListView.ViewMode.ListMode)
+            self._view.setGridSize(QSize())
+            self._view.setSpacing(0)
+        self._view.viewport().update()
 
     def _on_address_validate(self) -> None:
         """デバウンス後にバリデートのみ実施（ナビゲートしない）。"""

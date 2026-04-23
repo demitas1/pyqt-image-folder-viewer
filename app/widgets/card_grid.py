@@ -219,19 +219,15 @@ class CardDelegate(QStyledItemDelegate):
 
         pixmap = self._pixmaps.get(card.thumbnail) if card.thumbnail else None
         if pixmap:
+            painter.fillRect(thumb_rect, QColor(0, 0, 0))
             scaled = pixmap.scaled(
                 thumb_rect.size(),
-                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
-            # センタークリップ
-            x_off = (scaled.width() - thumb_rect.width()) // 2
-            y_off = (scaled.height() - thumb_rect.height()) // 2
-            painter.drawPixmap(
-                thumb_rect,
-                scaled,
-                scaled.rect().adjusted(x_off, y_off, -x_off, -y_off),
-            )
+            x_off = (thumb_rect.width() - scaled.width()) // 2
+            y_off = (thumb_rect.height() - scaled.height()) // 2
+            painter.drawPixmap(thumb_rect.x() + x_off, thumb_rect.y() + y_off, scaled)
         else:
             # サムネイルなし
             painter.fillRect(thumb_rect, QColor(colors["thumb_bg"]))
