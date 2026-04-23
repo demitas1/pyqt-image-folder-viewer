@@ -193,6 +193,7 @@ class ImagePickerDialog(QDialog):
         self._address_valid = True
         self._sort_key: str = "name"
         self._sort_ascending: bool = True
+        self._show_hidden: bool = False
         self.setWindowTitle("フォルダを選択" if mode == "folder" else "サムネイル画像を選択")
         self.setMinimumSize(640, 520)
         self._selected_path: str | None = None
@@ -238,6 +239,11 @@ class ImagePickerDialog(QDialog):
                 btn.hide()
             quick.addWidget(btn)
         quick.addStretch()
+        self._hidden_btn = QPushButton("隠しファイル")
+        self._hidden_btn.setCheckable(True)
+        self._hidden_btn.setChecked(False)
+        self._hidden_btn.toggled.connect(self._on_toggle_hidden)
+        quick.addWidget(self._hidden_btn)
         self._sort_combo = QComboBox()
         for label, key in _SORT_OPTIONS:
             self._sort_combo.addItem(label, userData=key)
@@ -314,7 +320,10 @@ class ImagePickerDialog(QDialog):
         self._btn_up.setEnabled(directory.parent != directory)
 
         try:
-            all_entries = [p for p in directory.iterdir() if not p.name.startswith(".")]
+            all_entries = [
+                p for p in directory.iterdir()
+                if self._show_hidden or not p.name.startswith(".")
+            ]
         except PermissionError:
             all_entries = []
 
@@ -377,6 +386,10 @@ class ImagePickerDialog(QDialog):
     def _on_sort_dir_toggled(self, checked: bool) -> None:
         self._sort_ascending = checked
         self._sort_dir_btn.setText("↑" if checked else "↓")
+        self._navigate(self._current_dir)
+
+    def _on_toggle_hidden(self, checked: bool) -> None:
+        self._show_hidden = checked
         self._navigate(self._current_dir)
 
     def _on_address_validate(self) -> None:
