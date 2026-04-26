@@ -214,9 +214,15 @@ class ViewerWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _load_images(self) -> None:
+        if not Path(self._card.folder_path).exists():
+            QMessageBox.warning(self, "エラー",
+                f"フォルダが見つかりません:\n{self._card.folder_path}")
+            self._on_back()
+            return
         self._images = collect_images(self._card.folder_path, self._card.recursive)
         if not self._images:
-            QMessageBox.warning(self, "エラー", "フォルダに画像が見つかりません")
+            QMessageBox.warning(self, "エラー",
+                f"フォルダに画像が見つかりません:\n{self._card.folder_path}")
             self._on_back()
             return
 

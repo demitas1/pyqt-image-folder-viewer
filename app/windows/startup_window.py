@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -42,6 +42,7 @@ class StartupWindow(QDialog):
         self._profile: ProfileData | None = None
         self._profile_path: str | None = None
         self._launched: bool = False  # 自動オープン成功フラグ
+        self._auto_open_error: str | None = None
 
         self._build_ui()
         self._refresh_recent_list()
@@ -125,8 +126,8 @@ class StartupWindow(QDialog):
     def _auto_open(self, path: str) -> None:
         try:
             self._open_profile(path)
-        except Exception:
-            pass  # 失敗時はそのまま StartupWindow を表示
+        except Exception as e:
+            self._auto_open_error = f"プロファイルの自動オープンに失敗しました:\n{e}"
 
     def _open_profile(self, path: str) -> None:
         profile = load_profile(path)
@@ -235,3 +236,20 @@ class StartupWindow(QDialog):
         except Exception:
             pass  # 将来エラー通知を追加予定
         self._refresh_recent_list()
+
+    # ------------------------------------------------------------------
+    # ウィンドウイベント
+    # ------------------------------------------------------------------
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        QTimer.singleShot(0, self._show_startup_warnings)
+
+    def _show_startup_warnings(self) -> None:
+        from app.models.app_config import get_config_load_warning
+        warn = get_config_load_warning()
+        if warn:
+            QMessageBox.warning(self, "設定読み込みエラー", warn)
+        if self._auto_open_error:
+            QMessageBox.warning(self, "自動オープン失敗", self._auto_open_error)
+            self._auto_open_error = None
