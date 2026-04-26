@@ -17,7 +17,7 @@ from PyQt6.QtCore import (
     Qt,
     pyqtSignal,
 )
-from PyQt6.QtGui import QColor, QPainter, QPixmap
+from PyQt6.QtGui import QColor, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QListView,
@@ -212,27 +212,40 @@ class CardDelegate(QStyledItemDelegate):
         # サムネイル領域
         thumb_rect = rect.adjusted(4, 4, -4, -(CARD_HEIGHT - THUMB_H - 4))
 
-        if card.thumbnail and card.thumbnail not in self._pixmaps:
-            # 初回リクエスト
-            self._pixmaps[card.thumbnail] = None  # ロード中マーカー
-            self._loader.request(card.thumbnail, self._on_thumbnail_ready)
+        folder_exists = Path(card.folder_path).exists() if card.folder_path else False
 
-        pixmap = self._pixmaps.get(card.thumbnail) if card.thumbnail else None
-        if pixmap:
-            painter.fillRect(thumb_rect, QColor(0, 0, 0))
-            scaled = pixmap.scaled(
-                thumb_rect.size(),
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-            x_off = (thumb_rect.width() - scaled.width()) // 2
-            y_off = (thumb_rect.height() - scaled.height()) // 2
-            painter.drawPixmap(thumb_rect.x() + x_off, thumb_rect.y() + y_off, scaled)
+        if not folder_exists:
+            # フォルダ不存在: エラー表示
+            painter.fillRect(thumb_rect, QColor("#3a1010"))
+            old_font = painter.font()
+            err_font = painter.font()
+            err_font.setPointSize(24)
+            painter.setFont(err_font)
+            painter.setPen(QColor("#ff6666"))
+            painter.drawText(thumb_rect, Qt.AlignmentFlag.AlignCenter, "⚠")
+            painter.setFont(old_font)
         else:
-            # サムネイルなし
-            painter.fillRect(thumb_rect, QColor(colors["thumb_bg"]))
-            painter.setPen(QColor(colors["icon_fg"]))
-            painter.drawText(thumb_rect, Qt.AlignmentFlag.AlignCenter, "📁")
+            if card.thumbnail and card.thumbnail not in self._pixmaps:
+                # 初回リクエスト
+                self._pixmaps[card.thumbnail] = None  # ロード中マーカー
+                self._loader.request(card.thumbnail, self._on_thumbnail_ready)
+
+            pixmap = self._pixmaps.get(card.thumbnail) if card.thumbnail else None
+            if pixmap:
+                painter.fillRect(thumb_rect, QColor(0, 0, 0))
+                scaled = pixmap.scaled(
+                    thumb_rect.size(),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                x_off = (thumb_rect.width() - scaled.width()) // 2
+                y_off = (thumb_rect.height() - scaled.height()) // 2
+                painter.drawPixmap(thumb_rect.x() + x_off, thumb_rect.y() + y_off, scaled)
+            else:
+                # サムネイルなし
+                painter.fillRect(thumb_rect, QColor(colors["thumb_bg"]))
+                painter.setPen(QColor(colors["icon_fg"]))
+                painter.drawText(thumb_rect, Qt.AlignmentFlag.AlignCenter, "📁")
 
         # タイトル
         title_rect = rect.adjusted(4, THUMB_H + 8, -4, -4)
@@ -242,6 +255,14 @@ class CardDelegate(QStyledItemDelegate):
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
             card.title,
         )
+
+        # フォルダ不存在: カード全体に赤枠
+        if not folder_exists:
+            pen = QPen(QColor("#ff4444"))
+            pen.setWidth(2)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(rect.adjusted(1, 1, -1, -1))
 
     def _on_thumbnail_ready(self, path: str, pixmap: QPixmap | None) -> None:
         self._pixmaps[path] = pixmap
@@ -332,8 +353,13 @@ class CardGrid(QWidget):
     def open_selected(self) -> None:
         """現在選択中のカードを開く（Enter キー用）。"""
         card = self.current_card()
-        if card and Path(card.folder_path).exists():
-            self.card_opened.emit(card)
+        if not card:
+            return
+        if not Path(card.folder_path).exists():
+            QMessageBox.warning(self, "エラー",
+                f"フォルダが見つかりません:\n{card.folder_path}")
+            return
+        self.card_opened.emit(card)
 
     def set_profile(self, profile: ProfileData) -> None:
         """プロファイルを切り替えてグリッドを更新する。"""
@@ -354,8 +380,13 @@ class CardGrid(QWidget):
 
     def _on_open_card(self, index: QModelIndex) -> None:
         card: Card = index.data(Qt.ItemDataRole.UserRole)
-        if card and Path(card.folder_path).exists():
-            self.card_opened.emit(card)
+        if not card:
+            return
+        if not Path(card.folder_path).exists():
+            QMessageBox.warning(self, "エラー",
+                f"フォルダが見つかりません:\n{card.folder_path}")
+            return
+        self.card_opened.emit(card)
 
     def _on_context_menu(self, pos) -> None:
         index = self._view.indexAt(pos)

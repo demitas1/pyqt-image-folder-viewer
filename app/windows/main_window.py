@@ -391,6 +391,13 @@ class MainWindow(QMainWindow):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         QTimer.singleShot(0, self._restore_card_focus)
+        QTimer.singleShot(0, self._show_config_warning)
+
+    def _show_config_warning(self) -> None:
+        from app.models.app_config import get_config_load_warning
+        warn = get_config_load_warning()
+        if warn:
+            self._toast.add_toast(warn, ToastType.ERROR)
 
     def closeEvent(self, event) -> None:
         self._save_window_state()

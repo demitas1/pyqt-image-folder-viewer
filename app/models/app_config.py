@@ -16,6 +16,12 @@ APP_NAME = "image-folder-viewer"
 ORG_NAME = "org.example"
 MAX_RECENT_PROFILES = 10
 
+_config_load_warning: str | None = None
+
+
+def get_config_load_warning() -> str | None:
+    return _config_load_warning
+
 
 def _config_path() -> Path:
     data_dir = QStandardPaths.writableLocation(
@@ -85,13 +91,16 @@ class AppConfig:
 
 
 def load_app_config() -> AppConfig:
+    global _config_load_warning
+    _config_load_warning = None
     path = _config_path()
     if not path.exists():
         return AppConfig()
     try:
         with open(path, encoding="utf-8") as f:
             return AppConfig.from_dict(json.load(f))
-    except Exception:
+    except Exception as e:
+        _config_load_warning = f"設定ファイルの読み込みに失敗しました（デフォルト設定で起動）:\n{e}"
         return AppConfig()
 
 
